@@ -1,0 +1,460 @@
+openapi: 3.1.0
+info:
+  title: AgileCortex API
+  description: Assistant multi-agents Delivery & Support (Jira, Confluence, métriques
+    Scrum).
+  version: 0.1.0
+paths:
+  /chat:
+    post:
+      tags:
+      - chat
+      summary: Envoyer un message et recevoir la réponse en streaming
+      operationId: chat_chat_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+        required: true
+      responses:
+        '200':
+          description: 'Flux Server-Sent Events. Chaque ligne `data:` contient un
+            `ChatEvent` en JSON (types : token, handoff, approval_required, final,
+            error).'
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /approvals:
+    get:
+      tags:
+      - approvals
+      summary: Lister les actions en attente
+      operationId: list_pending_approvals_get
+      parameters:
+      - name: thread_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thread Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PendingAction'
+                title: Response List Pending Approvals Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /approvals/{action_id}:
+    post:
+      tags:
+      - approvals
+      summary: Approuver ou rejeter une écriture Jira (HITL)
+      operationId: decide_approvals__action_id__post
+      parameters:
+      - name: action_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Action Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDecisionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /dashboard/summary:
+    get:
+      tags:
+      - dashboard
+      summary: Vélocité, risque et blockers du sprint en cours
+      operationId: summary_dashboard_summary_get
+      parameters:
+      - name: project_key
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Project Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /webhooks/jira:
+    post:
+      tags:
+      - webhooks
+      summary: Réception des webhooks Jira (bug critique, etc.)
+      operationId: jira_webhook_webhooks_jira_post
+      parameters:
+      - name: x-webhook-secret
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Webhook-Secret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Payload
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAck'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /health:
+    get:
+      tags:
+      - system
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+components:
+  schemas:
+    ActionStatus:
+      type: string
+      enum:
+      - pending
+      - approved
+      - rejected
+      - executed
+      - failed
+      title: ActionStatus
+    AgentName:
+      type: string
+      enum:
+      - supervisor
+      - rag
+      - jira
+      - risk
+      title: AgentName
+    ApprovalDecisionRequest:
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+          title: Decision
+        comment:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Comment
+      type: object
+      required:
+      - decision
+      title: ApprovalDecisionRequest
+    ApprovalDecisionResponse:
+      properties:
+        action_id:
+          type: string
+          title: Action Id
+        status:
+          type: string
+          enum:
+          - approved
+          - rejected
+          - executed
+          - failed
+          title: Status
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+      type: object
+      required:
+      - action_id
+      - status
+      title: ApprovalDecisionResponse
+    ChatRequest:
+      properties:
+        thread_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thread Id
+          description: Absent pour démarrer une nouvelle conversation
+        message:
+          type: string
+          minLength: 1
+          title: Message
+      type: object
+      required:
+      - message
+      title: ChatRequest
+    DashboardSummary:
+      properties:
+        project_key:
+          type: string
+          title: Project Key
+        sprint_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sprint Name
+        velocity_history:
+          items:
+            type: number
+          type: array
+          title: Velocity History
+        avg_velocity:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Avg Velocity
+        committed_points:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Committed Points
+        risk:
+          anyOf:
+          - $ref: '#/components/schemas/RiskAssessment'
+          - type: 'null'
+        unassigned_blockers:
+          items:
+            $ref: '#/components/schemas/JiraIssueRef'
+          type: array
+          title: Unassigned Blockers
+      type: object
+      required:
+      - project_key
+      title: DashboardSummary
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          const: ok
+          title: Status
+          default: ok
+        env:
+          type: string
+          title: Env
+        version:
+          type: string
+          title: Version
+      type: object
+      required:
+      - env
+      - version
+      title: HealthResponse
+    JiraIssueRef:
+      properties:
+        key:
+          type: string
+          title: Key
+        summary:
+          type: string
+          title: Summary
+        status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+        assignee:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assignee
+        priority:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Priority
+        story_points:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Story Points
+      type: object
+      required:
+      - key
+      - summary
+      title: JiraIssueRef
+    PendingAction:
+      properties:
+        action_id:
+          type: string
+          title: Action Id
+        tool:
+          type: string
+          title: Tool
+          description: Ex. create_user_story, assign_ticket
+        args:
+          additionalProperties: true
+          type: object
+          title: Args
+        project_key:
+          type: string
+          title: Project Key
+        preview:
+          type: string
+          title: Preview
+          description: Texte lisible affiché dans la carte d'approbation
+        status:
+          $ref: '#/components/schemas/ActionStatus'
+          default: pending
+        requested_by:
+          $ref: '#/components/schemas/AgentName'
+          default: jira
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - tool
+      - project_key
+      - preview
+      title: PendingAction
+      description: Écriture Jira en attente de validation humaine (HITL).
+    RiskAssessment:
+      properties:
+        score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Score
+        level:
+          $ref: '#/components/schemas/RiskLevel'
+        avg_velocity:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Avg Velocity
+        committed_points:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Committed Points
+        unassigned_blockers:
+          items:
+            type: string
+          type: array
+          title: Unassigned Blockers
+        recommendations:
+          items:
+            type: string
+          type: array
+          title: Recommendations
+      type: object
+      required:
+      - score
+      - level
+      title: RiskAssessment
+      description: Résultat de `compute_delay_risk_score`.
+    RiskLevel:
+      type: string
+      enum:
+      - low
+      - medium
+      - high
+      - critical
+      title: RiskLevel
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    WebhookAck:
+      properties:
+        status:
+          type: string
+          const: accepted
+          title: Status
+          default: accepted
+      type: object
+      title: WebhookAck
